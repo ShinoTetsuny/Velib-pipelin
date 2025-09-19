@@ -7,8 +7,8 @@ spark = SparkSession \
     .builder \
     .appName("VelibBatchProcessing") \
     .master("spark://spark-master:7077") \
-    .config("spark.mongodb.input.uri", "mongodb://admin:pwd@mongodb-ipssi:27017/velib.stations") \
-    .config("spark.mongodb.output.uri", "mongodb://admin:pwd@mongodb-ipssi:27017/velib.batch_results") \
+    .config("spark.mongodb.input.uri", "mongodb://admin:pwd@mongodb-ipssi:27018/velib.stations") \
+    .config("spark.mongodb.output.uri", "mongodb://admin:pwd@mongodb-ipssi:27018/velib.batch_results") \
     .config('spark.jars.packages', 'org.mongodb.spark:mongo-spark-connector_2.12:3.0.2') \
     .getOrCreate()
 
@@ -27,26 +27,78 @@ def main():
         print(f"Nombre total d'enregistrements: {df.count()}")
         df.printSchema()
         
-        # Analyse 1: Capacité totale par station
-        capacity_analysis = df.groupBy("name", "capacity") \
-            .agg(
-                count("*").alias("nb_mesures"),
-                avg("numbikesavailable").alias("moy_velos_disponibles"),
-                max("numbikesavailable").alias("max_velos"),
-                min("numbikesavailable").alias("min_velos")
-            )
+        # Conversion des colonnes numériques
+        df_typed = df.withColumn("capacity", col("capacity").cast("int")) \
+                    .withColumn("numbikesavailable", col("numbikesavailable").cast("int")) \
+                    .withColumn("numdocksavailable", col("numdocksavailable").cast("int")) \
+                    .withColumn("mechanical", col("mechanical").cast("int")) \
+                    .withColumn("ebike", col("ebike").cast("int"))
         
-        print("=== ANALYSE DES CAPACITES ===")
-        capacity_analysis.show(20, truncate=False)
+        # Analyse 1: Top 10 des stations avec le plus de vélos disponibles
+        print("=== TOP 10 STATIONS AVEC LE PLUS DE VELOS ===")
+        top_stations = df_typed.filter(col("is_installed") == "OUI") \
+                              .groupBy("name", "nom_arrondissement_communes") \
+                              .agg(
+                                  avg("numbikesavailable").alias("moy_velos"),
+                                  max("numbikesavailable").alias("max_velos"),
+                                  avg("capacity").alias("capacite_moyenne")
+                              ) \
+                              .orderBy(desc("moy_velos")) \
+                              .limit(10)
         
-        # Sauvegarde en MongoDB
-        capacity_analysis.write \
-            .format("mongodb") \
+        top_stations.show(10, truncate=False)
+        
+        # Analyse 2: Statistiques par arrondissement
+        print("=== STATISTIQUES PAR ARRONDISSEMENT ===")
+        stats_arrondissement = df_typed.filter(col("is_installed") == "OUI") \
+                                      .groupBy("nom_arrondissement_communes") \
+                                      .agg(
+                                          countDistinct("name").alias("nb_stations"),
+                                          sum("capacity").alias("capacite_totale"),
+                                          avg("numbikesavailable").alias("moy_velos_disponibles"),
+                                          sum("numbikesavailable").alias("total_velos_disponibles")
+                                      ) \
+                                      .orderBy(desc("total_velos_disponibles"))
+        
+        stats_arrondissement.show(20, truncate=False)
+        
+        # Analyse 3: Taux de disponibilité des stations
+        print("=== TAUX DE DISPONIBILITE DES STATIONS ===")
+        taux_disponibilite = df_typed.filter(col("is_installed") == "OUI") \
+                                    .withColumn("taux_dispo", col("numbikesavailable") / col("capacity") * 100) \
+                                    .groupBy("name") \
+                                    .agg(
+                                        avg("taux_dispo").alias("taux_moyen_dispo"),
+                                        count("*").alias("nb_mesures")
+                                    ) \
+                                    .filter(col("taux_moyen_dispo") > 0) \
+                                    .orderBy(desc("taux_moyen_dispo")) \
+                                    .limit(15)
+        
+        taux_disponibilite.show(15, truncate=False)
+        
+        # Sauvegarde des résultats en CSV (plus simple)
+        print("=== SAUVEGARDE DES RESULTATS ===")
+        
+        # Top stations
+        top_stations.coalesce(1).write \
             .mode("overwrite") \
-            .option("collection", "station_capacity_analysis") \
-            .save()
+            .option("header", "true") \
+            .csv("hdfs://namenode:9000/users/ipssi/output/top_stations")
         
-        print("✅ Données sauvegardées dans MongoDB")
+        # Stats par arrondissement
+        stats_arrondissement.coalesce(1).write \
+            .mode("overwrite") \
+            .option("header", "true") \
+            .csv("hdfs://namenode:9000/users/ipssi/output/stats_arrondissement")
+        
+        # Taux de disponibilité
+        taux_disponibilite.coalesce(1).write \
+            .mode("overwrite") \
+            .option("header", "true") \
+            .csv("hdfs://namenode:9000/users/ipssi/output/taux_disponibilite")
+        
+        print("✅ Toutes les analyses sauvegardées dans HDFS")
         
     except Exception as e:
         print(f"❌ Erreur lors du traitement: {e}")
