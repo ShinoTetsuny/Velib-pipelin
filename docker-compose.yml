@@ -154,7 +154,7 @@ services:
       MONGO_INITDB_ROOT_USERNAME: "admin"
       MONGO_INITDB_ROOT_PASSWORD: "pwd"
     volumes:
-      - ./mongodb:/data/db
+      - mongodb_data:/data/db
 
 volumes:
   hadoop_namenode:
@@ -162,3 +162,4 @@ volumes:
   hadoop_datanode-2:
   hadoop_datanode-3:
   hadoop_historyserver:
+  mongodb_data:

@@ -8,8 +8,8 @@ spark = SparkSession \
     .builder \
     .appName("streaming-test") \
     .master("spark://spark-master:7077") \
-    .config("spark.mongodb.input.uri", "mongodb://admin:pwd@mongo:27017/admin.my_collection") \
-    .config("spark.mongodb.output.uri", "mongodb://admin:pwd@mongo:27017/admin.my_collection") \
+    .config("spark.mongodb.input.uri", "mongodb://admin:pwd@mongodb-ipssi:27017/admin.my_collection") \
+    .config("spark.mongodb.output.uri", "mongodb://admin:pwd@mongodb-ipssi:27017/admin.my_collection") \
     .config('spark.jars.packages', 'org.mongodb.spark:mongo-spark-connector_2.12:3.0.2') \
     .getOrCreate()
 
