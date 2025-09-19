@@ -14,8 +14,8 @@ pip3 install -r requirements.txt
 
 # Lancer Streamlit
 echo "🚀 Lancement de l'application Streamlit..."
-echo "📱 L'application sera disponible sur : http://localhost:8501"
+echo "📱 L'application sera disponible sur : http://localhost:8502"
 echo ""
 
 cd app
-streamlit run streamlit_app.py --server.port 8501 --server.address 0.0.0.0
+streamlit run streamlit_app.py --server.port 8502 --server.address 0.0.0.0

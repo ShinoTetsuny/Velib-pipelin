@@ -123,18 +123,95 @@ st.markdown("""
 @st.cache_resource
 def get_mongodb_connection():
     try:
-        client = MongoClient("mongodb://admin:pwd@localhost:27018/")
+        # Connection string MongoDB local
+        client = MongoClient("mongodb://localhost:27018/velib")
         return client
     except Exception as e:
         st.error(f"Erreur de connexion MongoDB: {e}")
         return None
 
-# Fonction pour charger les données depuis HDFS (simulation enrichie)
-@st.cache_data
+# Fonction pour charger les données depuis MongoDB
+@st.cache_data(ttl=300)  # Cache 5 minutes
 def load_velib_data():
-    """Charge les données Velib depuis HDFS via Docker"""
+    """Charge les données Velib depuis MongoDB"""
     try:
-        # Simulation des données enrichies - basées sur vos résultats réels
+        # Connexion à MongoDB
+        client = get_mongodb_connection()
+        if client is None:
+            st.warning("⚠️ Connexion MongoDB échouée, utilisation des données simulées")
+            return load_simulated_data()
+        
+        db = client.velib
+        
+        # Charger les données depuis MongoDB
+        try:
+            # Top stations
+            top_stations_cursor = db.top_stations.find().sort("moy_velos", -1).limit(20)
+            top_stations = pd.DataFrame(list(top_stations_cursor))
+            
+            # Stats par arrondissement
+            stats_arrondissement_cursor = db.stats_arrondissement.find().sort("total_velos_disponibles", -1)
+            stats_arrondissement = pd.DataFrame(list(stats_arrondissement_cursor))
+            
+            # Taux de disponibilité
+            taux_disponibilite_cursor = db.taux_disponibilite.find().sort("taux_moyen_dispo", -1).limit(20)
+            taux_disponibilite = pd.DataFrame(list(taux_disponibilite_cursor))
+            
+            # Vérifier si les données sont vides
+            if top_stations.empty or stats_arrondissement.empty or taux_disponibilite.empty:
+                st.warning("⚠️ Aucune donnée trouvée dans MongoDB, utilisation des données simulées")
+                return load_simulated_data()
+            
+            # Nettoyer les données (supprimer _id si présent)
+            if '_id' in top_stations.columns:
+                top_stations = top_stations.drop('_id', axis=1)
+            if '_id' in stats_arrondissement.columns:
+                stats_arrondissement = stats_arrondissement.drop('_id', axis=1)
+            if '_id' in taux_disponibilite.columns:
+                taux_disponibilite = taux_disponibilite.drop('_id', axis=1)
+            
+            # Afficher les informations de la dernière mise à jour
+            if 'batch_timestamp' in top_stations.columns and not top_stations.empty:
+                last_update = top_stations['batch_timestamp'].iloc[0]
+                st.success(f"✅ Données chargées depuis MongoDB ({len(top_stations)} stations, {len(stats_arrondissement)} arrondissements)")
+                st.info(f"🕒 Dernière mise à jour: {last_update}")
+            else:
+                st.success(f"✅ Données chargées depuis MongoDB ({len(top_stations)} stations, {len(stats_arrondissement)} arrondissements)")
+            
+            # Créer des données temporelles simulées pour les graphiques temporels
+            dates = pd.date_range(start='2025-09-01', end='2025-09-18', freq='H')
+            np.random.seed(42)
+            
+            temporal_data = pd.DataFrame({
+                'datetime': dates,
+                'total_velos': np.random.normal(15000, 2000, len(dates)),
+                'total_stations_actives': np.random.normal(1200, 50, len(dates)),
+                'taux_occupation_moyen': np.random.normal(45, 10, len(dates)),
+                'arrondissement': np.random.choice(['Paris', 'Boulogne-Billancourt', 'Saint-Denis'], len(dates))
+            })
+            
+            # Données de performance par heure
+            hourly_performance = pd.DataFrame({
+                'heure': range(24),
+                'moy_velos': [8000, 7500, 7000, 6500, 6000, 5500, 5000, 4500, 4000, 3500, 3000, 2500,
+                             2000, 1500, 1000, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500],
+                'moy_stations_pleines': [200, 180, 160, 140, 120, 100, 80, 60, 40, 20, 10, 5,
+                                       10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 120, 140]
+            })
+            
+            return top_stations, stats_arrondissement, taux_disponibilite, temporal_data, hourly_performance
+            
+        except Exception as e:
+            st.warning(f"⚠️ Erreur lors du chargement MongoDB: {e}, utilisation des données simulées")
+            return load_simulated_data()
+            
+    except Exception as e:
+        st.error(f"❌ Erreur lors du chargement des données: {e}")
+        return None, None, None, None, None
+
+def load_simulated_data():
+    """Charge des données simulées en cas d'échec MongoDB"""
+    # Simulation des données enrichies - basées sur vos résultats réels
         
         # Top stations (simulé avec plus de données)
         top_stations = pd.DataFrame({

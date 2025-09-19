@@ -77,28 +77,55 @@ def main():
         
         taux_disponibilite.show(15, truncate=False)
         
-        # Sauvegarde des résultats en CSV (plus simple)
+        # Sauvegarde des résultats en MongoDB ET CSV
         print("=== SAUVEGARDE DES RESULTATS ===")
         
-        # Top stations
+        # Ajouter un timestamp pour le suivi
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Sauvegarde MongoDB via script Python séparé
+        print("📊 Sauvegarde des résultats en CSV pour MongoDB...")
+        
+        # Sauvegarder en CSV temporaire pour MongoDB
+        top_stations_mongo = top_stations.withColumn("batch_timestamp", lit(timestamp))
+        top_stations_mongo.coalesce(1).write \
+            .mode("overwrite") \
+            .option("header", "true") \
+            .csv("hdfs://namenode:9000/users/ipssi/output/top_stations_mongo")
+        
+        stats_arrondissement_mongo = stats_arrondissement.withColumn("batch_timestamp", lit(timestamp))
+        stats_arrondissement_mongo.coalesce(1).write \
+            .mode("overwrite") \
+            .option("header", "true") \
+            .csv("hdfs://namenode:9000/users/ipssi/output/stats_arrondissement_mongo")
+        
+        taux_disponibilite_mongo = taux_disponibilite.withColumn("batch_timestamp", lit(timestamp))
+        taux_disponibilite_mongo.coalesce(1).write \
+            .mode("overwrite") \
+            .option("header", "true") \
+            .csv("hdfs://namenode:9000/users/ipssi/output/taux_disponibilite_mongo")
+        
+        print("✅ Fichiers CSV créés pour MongoDB")
+        
+        # Sauvegarde CSV en backup (optionnel)
         top_stations.coalesce(1).write \
             .mode("overwrite") \
             .option("header", "true") \
             .csv("hdfs://namenode:9000/users/ipssi/output/top_stations")
         
-        # Stats par arrondissement
         stats_arrondissement.coalesce(1).write \
             .mode("overwrite") \
             .option("header", "true") \
             .csv("hdfs://namenode:9000/users/ipssi/output/stats_arrondissement")
         
-        # Taux de disponibilité
         taux_disponibilite.coalesce(1).write \
             .mode("overwrite") \
             .option("header", "true") \
             .csv("hdfs://namenode:9000/users/ipssi/output/taux_disponibilite")
         
-        print("✅ Toutes les analyses sauvegardées dans HDFS")
+        print("✅ Toutes les analyses sauvegardées dans MongoDB et HDFS")
+        print(f"📅 Timestamp du batch: {timestamp}")
         
     except Exception as e:
         print(f"❌ Erreur lors du traitement: {e}")

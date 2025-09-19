@@ -29,8 +29,11 @@ docker exec spark-master /spark/bin/spark-submit \
     /app/batch-spark.py
 
 echo ""
+echo "=== CHARGEMENT VERS MONGODB ==="
+python3 load-to-mongodb.py
+
 echo "=== JOB TERMINE ==="
 echo "Vérifiez les résultats dans MongoDB:"
 echo "docker exec -it mongodb-ipssi mongosh"
 echo "use velib"
-echo "db.batch_results.find().limit(5)"
+echo "db.top_stations.find().limit(5)"
